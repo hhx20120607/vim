@@ -2,7 +2,7 @@
 "
 " Author: Bram Moolenaar
 " Copyright: Vim license applies, see ":help license"
-" Last Change: 2023 Aug 23
+" Last Change: 2023 Nov 02
 "
 " WORK IN PROGRESS - The basics works stable, more to come
 " Note: In general you need at least GDB 7.12 because this provides the
@@ -859,7 +859,9 @@ func s:ParseVarinfo(varinfo)
   let nameIdx = matchstrpos(a:varinfo, '{name="\([^"]*\)"')
   let dict['name'] = a:varinfo[nameIdx[1] + 7 : nameIdx[2] - 2]
   let typeIdx = matchstrpos(a:varinfo, ',type="\([^"]*\)"')
-  let dict['type'] = a:varinfo[typeIdx[1] + 7 : typeIdx[2] - 2]
+  " 'type' maybe is a url-like string,
+  " try to shorten it and show only the /tail
+  let dict['type'] = (a:varinfo[typeIdx[1] + 7 : typeIdx[2] - 2])->fnamemodify(':t')
   let valueIdx = matchstrpos(a:varinfo, ',value="\(.*\)"}')
   if valueIdx[1] == -1
     let dict['value'] = 'Complex value'
@@ -951,6 +953,7 @@ func s:InstallCommands()
   set cpo&vim
 
   command -nargs=? Break call s:SetBreakpoint(<q-args>)
+  command -nargs=? Tbreak call s:SetBreakpoint(<q-args>, v:true)
   command Clear call s:ClearBreakpoint()
   command Step call s:SendResumingCommand('-exec-step')
   command Over call s:SendResumingCommand('-exec-next')
@@ -990,7 +993,9 @@ func s:InstallCommands()
   endif
   if map
     let s:k_map_saved = maparg('K', 'n', 0, 1)
-    nnoremap K :Evaluate<CR>
+    if !empty(s:k_map_saved) && !s:k_map_saved.buffer || empty(s:k_map_saved)
+      nnoremap K :Evaluate<CR>
+    endif
   endif
 
   let map = 1
@@ -999,7 +1004,9 @@ func s:InstallCommands()
   endif
   if map
     let s:plus_map_saved = maparg('+', 'n', 0, 1)
-    nnoremap <expr> + $'<Cmd>{v:count1}Up<CR>'
+    if !empty(s:plus_map_saved) && !s:plus_map_saved.buffer || empty(s:plus_map_saved)
+      nnoremap <expr> + $'<Cmd>{v:count1}Up<CR>'
+    endif
   endif
 
   let map = 1
@@ -1008,7 +1015,9 @@ func s:InstallCommands()
   endif
   if map
     let s:minus_map_saved = maparg('-', 'n', 0, 1)
-    nnoremap <expr> - $'<Cmd>{v:count1}Down<CR>'
+    if !empty(s:minus_map_saved) && !s:minus_map_saved.buffer || empty(s:minus_map_saved)
+      nnoremap <expr> - $'<Cmd>{v:count1}Down<CR>'
+    endif
   endif
 
 
@@ -1059,6 +1068,7 @@ endfunc
 " Delete installed debugger commands in the current window.
 func s:DeleteCommands()
   delcommand Break
+  delcommand Tbreak
   delcommand Clear
   delcommand Step
   delcommand Over
@@ -1080,26 +1090,29 @@ func s:DeleteCommands()
   delcommand Winbar
 
   if exists('s:k_map_saved')
-    if empty(s:k_map_saved)
+    if !empty(s:k_map_saved) && !s:k_map_saved.buffer
       nunmap K
-    else
       call mapset(s:k_map_saved)
+    elseif empty(s:k_map_saved)
+      nunmap K
     endif
     unlet s:k_map_saved
   endif
   if exists('s:plus_map_saved')
-    if empty(s:plus_map_saved)
+    if !empty(s:plus_map_saved) && !s:plus_map_saved.buffer
       nunmap +
-    else
       call mapset(s:plus_map_saved)
+    elseif empty(s:plus_map_saved)
+      nunmap +
     endif
     unlet s:plus_map_saved
   endif
   if exists('s:minus_map_saved')
-    if empty(s:minus_map_saved)
+    if !empty(s:minus_map_saved) && !s:minus_map_saved.buffer
       nunmap -
-    else
       call mapset(s:minus_map_saved)
+    elseif empty(s:minus_map_saved)
+      nunmap -
     endif
     unlet s:minus_map_saved
   endif
@@ -1156,7 +1169,7 @@ func s:Until(at)
 endfunc
 
 " :Break - Set a breakpoint at the cursor position.
-func s:SetBreakpoint(at)
+func s:SetBreakpoint(at, tbreak=v:false)
   " Setting a breakpoint may not work while the program is running.
   " Interrupt to make it work.
   let do_continue = 0
@@ -1169,7 +1182,12 @@ func s:SetBreakpoint(at)
   " Use the fname:lnum format, older gdb can't handle --source.
   let at = empty(a:at) ?
 	\ fnameescape(expand('%:p')) . ':' . line('.') : a:at
-  call s:SendCommand('-break-insert ' . at)
+  if a:tbreak
+    let cmd = '-break-insert -t ' . at
+  else
+    let cmd = '-break-insert ' . at
+  endif
+  call s:SendCommand(cmd)
   if do_continue
     Continue
   endif
@@ -1219,7 +1237,7 @@ func s:Run(args)
   call s:SendResumingCommand('-exec-run')
 endfunc
 
-" :Frame - go to a specfic frame in the stack
+" :Frame - go to a specific frame in the stack
 func s:Frame(arg)
   " Note: we explicit do not use mi's command
   " call s:SendCommand('-stack-select-frame "' . a:arg .'"')
@@ -1420,8 +1438,15 @@ endfunc
 
 func s:GotoAsmwinOrCreateIt()
   if !win_gotoid(s:asmwin)
+    let mdf = ''
     if win_gotoid(s:sourcewin)
-      exe 'rightbelow new'
+      " 60 is approx spaceBuffer * 3
+      if winwidth(0) > (78 + 60)
+        let mdf = 'vert'
+        exe mdf .. ' ' .. 60 .. 'new'
+      else
+        exe 'rightbelow new'
+      endif
     else
       exe 'new'
     endif
@@ -1443,7 +1468,7 @@ func s:GotoAsmwinOrCreateIt()
       let s:asmbuf = bufnr('Termdebug-asm-listing')
     endif
 
-    if s:GetDisasmWindowHeight() > 0
+    if mdf != 'vert' && s:GetDisasmWindowHeight() > 0
       exe 'resize ' .. s:GetDisasmWindowHeight()
     endif
   endif
@@ -1483,8 +1508,15 @@ endfunc
 
 func s:GotoVariableswinOrCreateIt()
   if !win_gotoid(s:varwin)
+    let mdf = ''
     if win_gotoid(s:sourcewin)
-      exe 'rightbelow new'
+      " 60 is approx spaceBuffer * 3
+      if winwidth(0) > (78 + 60)
+        let mdf = 'vert'
+        exe mdf .. ' ' .. 60 .. 'new'
+      else
+        exe 'rightbelow new'
+      endif
     else
       exe 'new'
     endif
@@ -1505,7 +1537,7 @@ func s:GotoVariableswinOrCreateIt()
       let s:varbuf = bufnr('Termdebug-variables-listing')
     endif
 
-    if s:GetVariablesWindowHeight() > 0
+    if mdf != 'vert' && s:GetVariablesWindowHeight() > 0
       exe 'resize ' .. s:GetVariablesWindowHeight()
     endif
   endif
@@ -1623,9 +1655,9 @@ func s:CreateBreakpoint(id, subid, enabled)
       let label = get(g:termdebug_config, 'sign', '')
     endif
     if label == ''
-      let label = substitute(nr, '\..*', '', '')
-      if strlen(label) > 2
-	let label = strpart(label, strlen(label) - 2)
+      let label = printf('%02X', a:id)
+      if a:id > 255
+        let label = 'F+'
       endif
     endif
     call sign_define('debugBreakpoint' .. nr,
@@ -1774,3 +1806,5 @@ call s:InitAutocmd()
 
 let &cpo = s:keepcpo
 unlet s:keepcpo
+
+" vim: sw=2 sts=2 et

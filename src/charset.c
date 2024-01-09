@@ -1123,6 +1123,7 @@ win_lbr_chartabsize(
     int		n;
     char_u	*sbr;
     int		no_sbr = FALSE;
+    colnr_T	vcol_start = 0; // start from where to consider linebreak
 #endif
 
 #if defined(FEAT_PROP_POPUP)
@@ -1344,7 +1345,14 @@ win_lbr_chartabsize(
      * If 'linebreak' set check at a blank before a non-blank if the line
      * needs a break here
      */
-    if (wp->w_p_lbr
+    if (wp->w_p_lbr && wp->w_p_wrap && wp->w_width != 0)
+    {
+	char_u	*t = cts->cts_line;
+	while (VIM_ISBREAK((int)t[0]))
+	    t++;
+	vcol_start = t - cts->cts_line;
+    }
+    if (wp->w_p_lbr && vcol_start <= vcol
 	    && VIM_ISBREAK((int)s[0])
 	    && !VIM_ISBREAK((int)s[1])
 	    && wp->w_p_wrap
@@ -1950,7 +1958,7 @@ vim_islower(int c)
 	if (enc_latin1like)
 	    return (latin1flags[c] & LATIN1LOWER) == LATIN1LOWER;
     }
-    return islower(c);
+    return SAFE_islower(c);
 }
 
     int
@@ -1974,7 +1982,7 @@ vim_isupper(int c)
 	if (enc_latin1like)
 	    return (latin1flags[c] & LATIN1UPPER) == LATIN1UPPER;
     }
-    return isupper(c);
+    return SAFE_isupper(c);
 }
 
     int

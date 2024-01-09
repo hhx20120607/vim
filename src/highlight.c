@@ -2307,7 +2307,7 @@ gui_adjust_rgb(guicolor_T c)
     static int
 hex_digit(int c)
 {
-    if (isdigit(c))
+    if (SAFE_isdigit(c))
 	return c - '0';
     c = TOLOWER_ASC(c);
     if (c >= 'a' && c <= 'f')
@@ -3814,6 +3814,7 @@ highlight_changed(void)
 		if (attr > HL_ALL)  // Combination with ':' is not allowed.
 		    return FAIL;
 
+		// Note: Keep this in sync with expand_set_highlight().
 		switch (*p)
 		{
 		    case 'b':	attr |= HL_BOLD;

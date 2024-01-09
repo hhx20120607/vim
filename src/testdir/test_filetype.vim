@@ -186,6 +186,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     cvs: ['cvs123'],
     cvsrc: ['.cvsrc'],
     cynpp: ['file.cyn'],
+    cypher: ['file.cypher'],
     d: ['file.d'],
     dart: ['file.dart', 'file.drt'],
     datascript: ['file.ds'],
@@ -194,6 +195,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     debcontrol: ['/debian/control', 'any/debian/control'],
     debcopyright: ['/debian/copyright', 'any/debian/copyright'],
     debsources: ['/etc/apt/sources.list', '/etc/apt/sources.list.d/file.list', 'any/etc/apt/sources.list', 'any/etc/apt/sources.list.d/file.list'],
+    deb822sources: ['/etc/apt/sources.list.d/file.sources', 'any/etc/apt/sources.list.d/file.sources'],
     def: ['file.def'],
     denyhosts: ['denyhosts.conf'],
     desc: ['file.desc'],
@@ -206,7 +208,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     dnsmasq: ['/etc/dnsmasq.conf', '/etc/dnsmasq.d/file', 'any/etc/dnsmasq.conf', 'any/etc/dnsmasq.d/file'],
     dockerfile: ['Containerfile', 'Dockerfile', 'dockerfile', 'file.Dockerfile', 'file.dockerfile', 'Dockerfile.debian', 'Containerfile.something'],
     dosbatch: ['file.bat'],
-    dosini: ['/etc/yum.conf', 'file.ini', 'npmrc', '.npmrc', 'php.ini', 'php.ini-5', 'php.ini-file', '/etc/yum.repos.d/file', 'any/etc/yum.conf', 'any/etc/yum.repos.d/file', 'file.wrap', 'file.vbp'],
+    dosini: ['/etc/yum.conf', 'file.ini', 'npmrc', '.npmrc', 'php.ini', 'php.ini-5', 'php.ini-file', '/etc/yum.repos.d/file', 'any/etc/yum.conf', 'any/etc/yum.repos.d/file', 'file.wrap', 'file.vbp', 'ja2.ini', 'JA2.INI'],
     dot: ['file.dot', 'file.gv'],
     dracula: ['file.drac', 'file.drc', 'filelvs', 'filelpe', 'drac.file', 'lpe', 'lvs', 'some-lpe', 'some-lvs'],
     dtd: ['file.dtd'],
@@ -234,6 +236,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     esqlc: ['file.ec', 'file.EC'],
     esterel: ['file.strl'],
     eterm: ['anyEterm/file.cfg', 'Eterm/file.cfg', 'some-Eterm/file.cfg'],
+    execline: ['/etc/s6-rc/run', './s6-rc/src/dbus-srv/up', '/sbin/s6-shutdown'],
     exim: ['exim.conf'],
     expect: ['file.exp'],
     exports: ['exports'],
@@ -276,6 +279,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     gkrellmrc: ['gkrellmrc', 'gkrellmrc_x'],
     gleam: ['file.gleam'],
     glsl: ['file.glsl'],
+    gn: ['file.gn', 'file.gni'],
     gnash: ['gnashrc', '.gnashrc', 'gnashpluginrc', '.gnashpluginrc'],
     gnuplot: ['file.gpi', '.gnuplot'],
     go: ['file.go'],
@@ -315,7 +319,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     hoon: ['file.hoon'],
     hostconf: ['/etc/host.conf', 'any/etc/host.conf'],
     hostsaccess: ['/etc/hosts.allow', '/etc/hosts.deny', 'any/etc/hosts.allow', 'any/etc/hosts.deny'],
-    html: ['file.html', 'file.htm', 'file.cshtml'],
+    html: ['file.html', 'file.htm', 'file.cshtml', 'file.component.html'],
     htmlm4: ['file.html.m4'],
     httest: ['file.htt', 'file.htb'],
     hurl: ['file.hurl'],
@@ -333,6 +337,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     j: ['file.ijs'],
     jal: ['file.jal', 'file.JAL'],
     jam: ['file.jpl', 'file.jpr', 'JAM-file.file', 'JAM.file', 'Prl-file.file', 'Prl.file'],
+    janet: ['file.janet'],
     java: ['file.java', 'file.jav'],
     javacc: ['file.jj', 'file.jjt'],
     javascript: ['file.js', 'file.jsm', 'file.javascript', 'file.es', 'file.mjs', 'file.cjs'],
@@ -350,6 +355,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     jsonnet: ['file.jsonnet', 'file.libsonnet'],
     jsp: ['file.jsp'],
     julia: ['file.jl'],
+    just: ['justfile', 'Justfile', '.justfile', 'config.just'],
     kconfig: ['Kconfig', 'Kconfig.debug', 'Kconfig.file'],
     kdl: ['file.kdl'],
     kivy: ['file.kv'],
@@ -447,7 +453,6 @@ def s:GetFilenameChecks(): dict<list<string>>
     mma: ['file.nb'],
     mmp: ['file.mmp'],
     modconf: ['/etc/modules.conf', '/etc/modules', '/etc/conf.modules', '/etc/modprobe.file', 'any/etc/conf.modules', 'any/etc/modprobe.file', 'any/etc/modules', 'any/etc/modules.conf'],
-    modula2: ['file.m2', 'file.mi'],
     modula3: ['file.m3', 'file.mg', 'file.i3', 'file.ig', 'file.lm3'],
     monk: ['file.isc', 'file.monk', 'file.ssc', 'file.tsc'],
     moo: ['file.moo'],
@@ -461,6 +466,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     mojo: ['file.mojo', 'file.🔥'],
     mupad: ['file.mu'],
     mush: ['file.mush'],
+    mustache: ['file.mustache'],
     muttrc: ['Muttngrc', 'Muttrc', '.muttngrc', '.muttngrc-file', '.muttrc',
              '.muttrc-file', '/.mutt/muttngrc', '/.mutt/muttngrc-file',
              '/.mutt/muttrc', '/.mutt/muttrc-file', '/.muttng/muttngrc',
@@ -489,8 +495,9 @@ def s:GetFilenameChecks(): dict<list<string>>
     nqc: ['file.nqc'],
     nroff: ['file.tr', 'file.nr', 'file.roff', 'file.tmac', 'file.mom', 'tmac.file'],
     nsis: ['file.nsi', 'file.nsh'],
-    nu: ['env.nu', 'config.nu'],
+    nu: ['file.nu'],
     obj: ['file.obj'],
+    objdump: ['file.objdump', 'file.cppobjdump'],
     obse: ['file.obl', 'file.obse', 'file.oblivion', 'file.obscript'],
     ocaml: ['file.ml', 'file.mli', 'file.mll', 'file.mly', '.ocamlinit', 'file.mlt', 'file.mlp', 'file.mlip', 'file.mli.cppo', 'file.ml.cppo'],
     occam: ['file.occ'],
@@ -504,6 +511,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     opl: ['file.OPL', 'file.OPl', 'file.OpL', 'file.Opl', 'file.oPL', 'file.oPl', 'file.opL', 'file.opl'],
     ora: ['file.ora'],
     org: ['file.org', 'file.org_archive'],
+    pacmanlog: ['pacman.log'],
     pamconf: ['/etc/pam.conf', '/etc/pam.d/file', 'any/etc/pam.conf', 'any/etc/pam.d/file'],
     pamenv: ['/etc/security/pam_env.conf', '/home/user/.pam_environment', '.pam_environment', 'pam_env.conf'],
     papp: ['file.papp', 'file.pxml', 'file.pxsl'],
@@ -667,6 +675,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     swayconfig: ['/home/user/.sway/config', '/home/user/.config/sway/config', '/etc/sway/config', '/etc/xdg/sway/config'],
     swift: ['file.swift'],
     swiftgyb: ['file.swift.gyb'],
+    swig: ['file.swg', 'file.swig'],
     sysctl: ['/etc/sysctl.conf', '/etc/sysctl.d/file.conf', 'any/etc/sysctl.conf', 'any/etc/sysctl.d/file.conf'],
     systemd: ['any/systemd/file.automount', 'any/systemd/file.dnssd',
               'any/systemd/file.link', 'any/systemd/file.mount',
@@ -780,8 +789,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     vrml: ['file.wrl'],
     vroom: ['file.vroom'],
     vue: ['file.vue'],
-    wat: ['file.wat'],
-    wast: ['file.wast'],
+    wat: ['file.wat', 'file.wast'],
     wdl: ['file.wdl'],
     webmacro: ['file.wm'],
     wget: ['.wgetrc', 'wgetrc'],
@@ -793,10 +801,12 @@ def s:GetFilenameChecks(): dict<list<string>>
     wsh: ['file.wsf', 'file.wsc'],
     wsml: ['file.wsml'],
     wvdial: ['wvdial.conf', '.wvdialrc'],
+    xcompose: ['.XCompose', 'Compose'],
     xdefaults: ['.Xdefaults', '.Xpdefaults', '.Xresources', 'xdm-config', 'file.ad', '/Xresources/file', '/app-defaults/file', 'Xresources', 'Xresources-file', 'any/Xresources/file', 'any/app-defaults/file'],
     xf86conf: ['xorg.conf', 'xorg.conf-4'],
     xhtml: ['file.xhtml', 'file.xht'],
     xinetd: ['/etc/xinetd.conf', '/etc/xinetd.d/file', 'any/etc/xinetd.conf', 'any/etc/xinetd.d/file'],
+    xkb: ['/usr/share/X11/xkb/compat/pc', '/usr/share/X11/xkb/geometry/pc', '/usr/share/X11/xkb/keycodes/evdev', '/usr/share/X11/xkb/symbols/pc', '/usr/share/X11/xkb/types/pc'],
     xmath: ['file.msc', 'file.msf'],
     xml: ['/etc/blkid.tab', '/etc/blkid.tab.old', 'file.xmi', 'file.csproj', 'file.csproj.user', 'file.fsproj', 'file.fsproj.user', 'file.vbproj', 'file.vbproj.user', 'file.ui', 'file.tpm', '/etc/xdg/menus/file.menu', 'fglrxrc', 'file.xlf', 'file.xliff', 'file.xul', 'file.wsdl', 'file.wpl', 'any/etc/blkid.tab', 'any/etc/blkid.tab.old', 'any/etc/xdg/menus/file.menu', 'file.atom', 'file.rss', 'file.cdxml', 'file.psc1', 'file.mpd'],
     xmodmap: ['anyXmodmap', 'Xmodmap', 'some-Xmodmap', 'some-xmodmap', 'some-xmodmap-file', 'xmodmap', 'xmodmap-file'],
@@ -811,10 +821,9 @@ def s:GetFilenameChecks(): dict<list<string>>
     yang: ['file.yang'],
     yuck: ['file.yuck'],
     z8a: ['file.z8a'],
-    zig: ['file.zig'],
+    zig: ['file.zig', 'build.zig.zon'],
     zimbu: ['file.zu'],
     zimbutempl: ['file.zut'],
-    zir: ['file.zir'],
     zserio: ['file.zs'],
     zsh: ['.zprofile', '/etc/zprofile', '.zfbfmarks', 'file.zsh',
           '.zcompdump', '.zlogin', '.zlogout', '.zshenv', '.zshrc',
@@ -906,6 +915,7 @@ def s:GetScriptChecks(): dict<list<list<string>>>
             ['#!/path/itclsh'],
             ['#!/path/itkwish']],
     expect: [['#!/path/expect']],
+    execline: [['#!/sbin/execlineb -S0'], ['#!/usr/bin/execlineb']],
     gnuplot: [['#!/path/gnuplot']],
     make:   [['#!/path/make']],
     nix:    [['#!/path/nix-shell']],
@@ -950,6 +960,8 @@ def s:GetScriptChecks(): dict<list<list<string>>>
     crystal: [['#!/path/crystal']],
     rexx:   [['#!/path/rexx'],
             ['#!/path/regina']],
+    janet:  [['#!/path/janet']],
+    dart:   [['#!/path/dart']],
   }
 enddef
 
@@ -959,6 +971,7 @@ def s:GetScriptEnvChecks(): dict<list<list<string>>>
     perl: [['#!/usr/bin/env VAR=val perl']],
     scala: [['#!/usr/bin/env VAR=val VVAR=vval scala']],
     awk: [['#!/usr/bin/env VAR=val -i awk']],
+    execline: [['#!/usr/bin/env execlineb']],
     scheme: [['#!/usr/bin/env VAR=val --ignore-environment scheme']],
     python: [['#!/usr/bin/env VAR=val -S python -w -T']],
     wml: [['#!/usr/bin/env VAR=val --split-string wml']],
@@ -1475,12 +1488,12 @@ func Test_hook_file()
 
   call writefile(['[Trigger]', 'this is pacman config'], 'Xfile.hook', 'D')
   split Xfile.hook
-  call assert_equal('conf', &filetype)
+  call assert_equal('confini', &filetype)
   bwipe!
 
   call writefile(['not pacman'], 'Xfile.hook')
   split Xfile.hook
-  call assert_notequal('conf', &filetype)
+  call assert_notequal('confini', &filetype)
   bwipe!
 
   filetype off
@@ -1628,13 +1641,16 @@ func Test_mod_file()
   call writefile(['IMPLEMENTATION MODULE Module2Mod;'], 'modfile.MOD')
   split modfile.MOD
   call assert_equal('modula2', &filetype)
+  call assert_equal('pim', b:modula2.dialect)
   bwipe!
 
   " Modula-2 with comment and empty lines prior MODULE
   call writefile(['', '(* with',  ' comment *)', '', 'MODULE Module2Mod;'], 'modfile.MOD')
   split modfile.MOD
   call assert_equal('modula2', &filetype)
+  call assert_equal('pim', b:modula2.dialect)
   bwipe!
+
   call delete('modfile.MOD')
 
   " LambdaProlog module
@@ -2327,6 +2343,70 @@ func Test_vba_file()
   call writefile(['" Vimball Archiver by Charles E. Campbell, Ph.D.', 'UseVimball', 'finish'], 'Xfile.vba', 'D')
   split Xfile.vba
   call assert_equal('vim', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
+func Test_i_file()
+  filetype on
+
+  " Swig: keyword
+  call writefile(['%module mymodule', '/* a comment */'], 'Xfile.i', 'D')
+  split Xfile.i
+  call assert_equal('swig', &filetype)
+  bwipe!
+
+  " Swig: verbatim block
+  call writefile(['%{', '#include <header.hpp>', '%}'], 'Xfile.i', 'D')
+  split Xfile.i
+  call assert_equal('swig', &filetype)
+  bwipe!
+
+  " ASM
+  call writefile(['; comment', ';'], 'Xfile.i', 'D')
+  split Xfile.i
+  call assert_equal('asm', &filetype)
+  bwipe!
+
+  " *.i defaults to progress
+  call writefile(['looks like progress'], 'Xfile.i', 'D')
+  split Xfile.i
+  call assert_equal('progress', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
+func Test_def_file()
+  filetype on
+
+  call writefile(['this is the fallback'], 'Xfile.def', 'D')
+  split Xfile.def
+  call assert_equal('def', &filetype)
+  bwipe!
+
+  " Test dist#ft#FTdef()
+
+  let g:filetype_def = 'modula2'
+  split Xfile.def
+  call assert_equal('modula2', &filetype)
+  call assert_equal('pim', b:modula2.dialect)
+  bwipe!
+  unlet g:filetype_def
+
+  " Modula-2
+
+  call writefile(['(* a Modula-2 comment *)'], 'Xfile.def')
+  split Xfile.def
+  call assert_equal('modula2', &filetype)
+  call assert_equal('pim', b:modula2.dialect)
+  bwipe!
+
+  call writefile(['IMPLEMENTATION MODULE Module2Mod;'], 'Xfile.def')
+  split Xfile.def
+  call assert_equal('modula2', &filetype)
+  call assert_equal('pim', b:modula2.dialect)
   bwipe!
 
   filetype off

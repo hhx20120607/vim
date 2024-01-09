@@ -1,4 +1,4 @@
-*filetype.txt*  For Vim version 9.0.  Last change: 2023 Sep 11
+*filetype.txt*	For Vim version 9.1.  Last change: 2024 Jan 04
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -148,6 +148,7 @@ variables can be used to overrule the filetype used for certain extensions:
 	*.cls		g:filetype_cls
 	*.csh		g:filetype_csh		|ft-csh-syntax|
 	*.dat		g:filetype_dat
+	*.def		g:filetype_def
 	*.f		g:filetype_f		|ft-forth-syntax|
 	*.frm		g:filetype_frm		|ft-form-syntax|
 	*.fs		g:filetype_fs		|ft-forth-syntax|
@@ -169,6 +170,7 @@ variables can be used to overrule the filetype used for certain extensions:
 	*.sh		g:bash_is_sh		|ft-sh-syntax|
 	*.tex		g:tex_flavor		|ft-tex-plugin|
 	*.typ		g:filetype_typ
+	*.v		g:filetype_v
 	*.w		g:filetype_w		|ft-cweb-syntax|
 
 For a few filetypes the global variable is used only when the filetype could
@@ -433,7 +435,7 @@ So to enable this only for ruby, set the following variable: >
 	:let g:ruby_exec = 1
 
 If both, the global `plugin_exec` and the `<filetype>_exec` specific variable
-are set, the filetpe specific variable should have precedent.
+are set, the filetype specific variable should have precedent.
 
 AWK							*ft-awk-plugin*
 
@@ -567,8 +569,9 @@ FORTRAN							*ft-fortran-plugin*
 Options:
 'expandtab'	is switched on to avoid tabs as required by the Fortran
 		standards unless the user has set fortran_have_tabs in .vimrc.
-'textwidth'	is set to 72 for fixed source format as required by the
-		Fortran standards and to 80 for free source format.
+'textwidth'	is set to 80 for fixed source format whereas it is set to 132
+		for free source format. Setting the fortran_extended_line_length
+		variable increases the width to 132 for fixed source format.
 'formatoptions' is set to break code and comment lines and to preserve long
 		lines.  You can format comments with |gq|.
 For further discussion of fortran_have_tabs and the method used for the
@@ -607,6 +610,18 @@ to the details of that function in the call graph.
 
 The mapping can be disabled with: >
 	let g:no_gprof_maps = 1
+
+
+JSON-FORMAT						*ft-json-plugin*
+
+JSON filetype can be extended to use 'formatexpr' and "json.FormatExpr()"
+function for json formatting (using |gq|).
+
+Add following lines to $HOME/.vim/ftplugin/json.vim: >
+
+	vim9script
+	import autoload 'dist/json.vim'
+	setl formatexpr=json.FormatExpr()
 
 
 MAIL							*ft-mail-plugin*
@@ -764,6 +779,14 @@ The following formatting setting are optionally available: >
 
 To enable this behavior, set the following variable in your vimrc: >
 	let g:rst_style = 1
+
+
+RNOWEB							      *ft-rnoweb-plugin*
+
+The 'formatexpr' option is set dynamically with different values for R code
+and for LaTeX code. If you prefer that 'formatexpr' is not set, add to your
+|vimrc|: >
+	let rnw_dynamic_comments = 0
 
 
 RPM SPEC						*ft-spec-plugin*

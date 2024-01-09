@@ -2562,7 +2562,13 @@ nv_z_get_count(cmdarg_T *cap, int *nchar_arg)
 	if (nchar == K_DEL || nchar == K_KDEL)
 	    n /= 10;
 	else if (VIM_ISDIGIT(nchar))
-	    n = n * 10 + (nchar - '0');
+	{
+	    if (vim_append_digit_long(&n, nchar - '0') == FAIL)
+	    {
+		clearopbeep(cap->oap);
+		break;
+	    }
+	}
 	else if (nchar == CAR)
 	{
 #ifdef FEAT_GUI
@@ -4464,11 +4470,11 @@ nv_brackets(cmdarg_T *cap)
 		return;
 
 	    find_pattern_in_path(ptr, 0, len, TRUE,
-		cap->count0 == 0 ? !isupper(cap->nchar) : FALSE,
+		cap->count0 == 0 ? !SAFE_isupper(cap->nchar) : FALSE,
 		((cap->nchar & 0xf) == ('d' & 0xf)) ?  FIND_DEFINE : FIND_ANY,
 		cap->count1,
-		isupper(cap->nchar) ? ACTION_SHOW_ALL :
-			    islower(cap->nchar) ? ACTION_SHOW : ACTION_GOTO,
+		SAFE_isupper(cap->nchar) ? ACTION_SHOW_ALL :
+			    SAFE_islower(cap->nchar) ? ACTION_SHOW : ACTION_GOTO,
 		cap->cmdchar == ']' ? curwin->w_cursor.lnum + 1 : (linenr_T)1,
 		(linenr_T)MAXLNUM);
 	    vim_free(ptr);
@@ -5211,7 +5217,7 @@ v_visop(cmdarg_T *cap)
 
     // Uppercase means linewise, except in block mode, then "D" deletes till
     // the end of the line, and "C" replaces till EOL
-    if (isupper(cap->cmdchar))
+    if (SAFE_isupper(cap->cmdchar))
     {
 	if (VIsual_mode != Ctrl_V)
 	{
@@ -6292,6 +6298,8 @@ n_opencmd(cmdarg_T *cap)
 	(void)hasFolding(curwin->w_cursor.lnum,
 		NULL, &curwin->w_cursor.lnum);
 #endif
+    // trigger TextChangedI for the 'o/O' command
+    curbuf->b_last_changedtick_i = CHANGEDTICK(curbuf);
     if (u_save((linenr_T)(curwin->w_cursor.lnum -
 		    (cap->cmdchar == 'O' ? 1 : 0)),
 		(linenr_T)(curwin->w_cursor.lnum +
@@ -7083,6 +7091,10 @@ invoke_edit(
     // Always reset "restart_edit", this is not a restarted edit.
     restart_edit = 0;
 
+    // Reset Changedtick_i, so that TextChangedI will only be triggered for stuff
+    // from insert mode, for 'o/O' this has already been done in n_opencmd
+    if (cap->cmdchar != 'O' && cap->cmdchar != 'o')
+	curbuf->b_last_changedtick_i = CHANGEDTICK(curbuf);
     if (edit(cmd, startln, cap->count1))
 	cap->retval |= CA_COMMAND_BUSY;
 

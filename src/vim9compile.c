@@ -550,6 +550,12 @@ need_type_where(
 {
     int ret;
 
+    if (expected->tt_type != VAR_CLASS && expected->tt_type != VAR_TYPEALIAS)
+    {
+	if (check_type_is_value(actual) == FAIL)
+	    return FAIL;
+    }
+
     if (expected == &t_bool && actual != &t_bool
 					&& (actual->tt_flags & TTFLAG_BOOL_OK))
     {
@@ -971,7 +977,7 @@ exarg_getline(
     void
 fill_exarg_from_cctx(exarg_T *eap, cctx_T *cctx)
 {
-    eap->getline = exarg_getline;
+    eap->ea_getline = exarg_getline;
     eap->cookie = cctx;
     eap->skip = cctx->ctx_skip == SKIP_YES;
 }
@@ -1029,7 +1035,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
     ufunc_T	*ufunc;
     int		r = FAIL;
     compiletype_T   compile_type;
-    isn_T	*funcref_isn = NULL;
+    int		funcref_isn_idx = -1;
     lvar_T	*lvar = NULL;
 
     if (eap->forceit)
@@ -1148,7 +1154,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
 					    ASSIGN_CONST, ufunc->uf_func_type);
 	if (lvar == NULL)
 	    goto theend;
-	if (generate_FUNCREF(cctx, ufunc, NULL, 0, &funcref_isn) == FAIL)
+	if (generate_FUNCREF(cctx, ufunc, NULL, FALSE, 0, &funcref_isn_idx) == FAIL)
 	    goto theend;
 	r = generate_STORE(cctx, ISN_STORE, lvar->lv_idx, NULL);
     }
@@ -1178,8 +1184,12 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
 #endif
 
     // If a FUNCREF instruction was generated, set the index after compiling.
-    if (funcref_isn != NULL && ufunc->uf_def_status == UF_COMPILED)
+    if (funcref_isn_idx != -1 && ufunc->uf_def_status == UF_COMPILED)
+    {
+	isn_T	*funcref_isn = ((isn_T *)cctx->ctx_instr.ga_data) +
+							funcref_isn_idx;
 	funcref_isn->isn_arg.funcref.fr_dfunc_idx = ufunc->uf_dfunc_idx;
+    }
 
 theend:
     vim_free(lambda_name);
@@ -1323,11 +1333,12 @@ assignment_len(char_u *p, int *heredoc)
 /*
  * Generate the load instruction for "name".
  */
-    static void
+    static int
 generate_loadvar(cctx_T *cctx, lhs_T *lhs)
 {
     char_u	*name = lhs->lhs_name;
     type_T	*type = lhs->lhs_type;
+    int		res = OK;
 
     switch (lhs->lhs_dest)
     {
@@ -1356,7 +1367,7 @@ generate_loadvar(cctx_T *cctx, lhs_T *lhs)
 	    generate_LOAD(cctx, ISN_LOADT, 0, name + 2, type);
 	    break;
 	case dest_script:
-	    compile_load_scriptvar(cctx,
+	    res = compile_load_scriptvar(cctx,
 				  name + (name[1] == ':' ? 2 : 0), NULL, NULL);
 	    break;
 	case dest_env:
@@ -1388,6 +1399,8 @@ generate_loadvar(cctx_T *cctx, lhs_T *lhs)
 	    // list or dict value should already be on the stack.
 	    break;
     }
+
+    return res;
 }
 
 /*
@@ -1610,9 +1623,9 @@ lhs_class_member_modifiable(lhs_T *lhs, char_u	*var_start, cctx_T *cctx)
 	     || (!is_object && cctx->ctx_ufunc->uf_class != cl)))
     {
 	char *msg = (m->ocm_access == VIM_ACCESS_PRIVATE)
-				? e_cannot_access_private_variable_str
+				? e_cannot_access_protected_variable_str
 				: e_variable_is_not_writable_str;
-	semsg(_(msg), m->ocm_name, cl->class_name);
+	emsg_var_cl_define(msg, m->ocm_name, 0, cl);
 	return FALSE;
     }
 
@@ -1733,11 +1746,14 @@ compile_lhs(
 		if (is_decl)
 		{
 		    // if we come here with what looks like an assignment like
-		    // .= but which has been reject by assignment_len() from
+		    // .= but which has been rejected by assignment_len() from
 		    // may_compile_assignment give a better error message
 		    char_u *p = skipwhite(lhs->lhs_end);
 		    if (p[0] == '.' && p[1] == '=')
 			emsg(_(e_dot_equal_not_supported_with_script_version_two));
+		    else if (p[0] == ':')
+			// type specified in a non-var assignment
+			semsg(_(e_trailing_characters_str), p);
 		    else
 			semsg(_(e_variable_already_declared_str), lhs->lhs_name);
 		    return FAIL;
@@ -1760,8 +1776,17 @@ compile_lhs(
 								lhs->lhs_name);
 		    return FAIL;
 		}
+
+		ocmember_T	*m =
+			&defcl->class_class_members[lhs->lhs_classmember_idx];
+		if (oc_var_check_ro(defcl, m))
+		    return FAIL;
+
 		lhs->lhs_dest = dest_class_member;
 		lhs->lhs_class = cctx->ctx_ufunc->uf_class;
+		lhs->lhs_type =
+		    oc_member_type_by_idx(cctx->ctx_ufunc->uf_class,
+					FALSE, lhs->lhs_classmember_idx);
 	    }
 	    else
 	    {
@@ -2001,21 +2026,40 @@ compile_lhs(
 	    // for an object or class member get the type of the member
 	    class_T	*cl = lhs->lhs_type->tt_class;
 	    int		is_object = lhs->lhs_type->tt_type == VAR_OBJECT;
+	    char_u	*name = var_start + lhs->lhs_varlen + 1;
+	    size_t	namelen = lhs->lhs_end - var_start - lhs->lhs_varlen - 1;
 
-	    if (!lhs_class_member_modifiable(lhs, var_start, cctx))
+	    ocmember_T	*m = member_lookup(cl, lhs->lhs_type->tt_type,
+					name, namelen, &lhs->lhs_member_idx);
+	    if (m == NULL)
+	    {
+		member_not_found_msg(cl, lhs->lhs_type->tt_type, name, namelen);
+		return FAIL;
+	    }
+
+	    // If it is private member variable, then accessing it outside the
+	    // class is not allowed.
+	    // If it is a read only class variable, then it can be modified
+	    // only inside the class where it is defined.
+	    if ((m->ocm_access != VIM_ACCESS_ALL) &&
+		    ((is_object && !inside_class(cctx, cl))
+		     || (!is_object && cctx->ctx_ufunc->uf_class != cl)))
+	    {
+		char *msg = (m->ocm_access == VIM_ACCESS_PRIVATE)
+				    ? e_cannot_access_protected_variable_str
+				    : e_variable_is_not_writable_str;
+		emsg_var_cl_define(msg, m->ocm_name, 0, cl);
+		return FAIL;
+	    }
+
+	    if (!IS_CONSTRUCTOR_METHOD(cctx->ctx_ufunc)
+						&& oc_var_check_ro(cl, m))
 		return FAIL;
 
-	    lhs->lhs_member_type = class_member_type(cl,
-					is_object,
-					after + 1, lhs->lhs_end,
-					&lhs->lhs_member_idx);
-	    if (lhs->lhs_member_idx < 0)
-		return FAIL;
+	    lhs->lhs_member_type = m->ocm_type;
 	}
 	else
-	{
 	    lhs->lhs_member_type = lhs->lhs_type->tt_member;
-	}
     }
     return OK;
 }
@@ -2196,18 +2240,21 @@ compile_load_lhs(
 	// Now we can properly check the type.  The variable is indexed, thus
 	// we need the member type.  For a class or object we don't know the
 	// type yet, it depends on what member is used.
+	// The top item in the stack is the Dict, followed by the key and then
+	// the type of the value.
 	vartype_T vartype = lhs->lhs_type->tt_type;
 	type_T *member_type = lhs->lhs_type->tt_member;
 	if (rhs_type != NULL && member_type != NULL
 		&& vartype != VAR_OBJECT && vartype != VAR_CLASS
 		&& rhs_type != &t_void
 		&& need_type(rhs_type, member_type, FALSE,
-					    -2, 0, cctx, FALSE, FALSE) == FAIL)
+					    -3, 0, cctx, FALSE, FALSE) == FAIL)
 	    return FAIL;
+
+	return OK;
     }
-    else
-	generate_loadvar(cctx, lhs);
-    return OK;
+
+    return  generate_loadvar(cctx, lhs);
 }
 
 /*
@@ -2222,12 +2269,15 @@ compile_load_lhs_with_index(lhs_T *lhs, char_u *var_start, cctx_T *cctx)
 	// "this.value": load "this" object and get the value at index for an
 	// object or class member get the type of the member.
 	// Also for "obj.value".
-       char_u *dot = vim_strchr(var_start, '.');
-       if (dot == NULL)
-	   return FAIL;
+	char_u *dot = vim_strchr(var_start, '.');
+	if (dot == NULL)
+	{
+	    semsg(_(e_missing_dot_after_object_str), lhs->lhs_name);
+	    return FAIL;
+	}
 
 	class_T	*cl = lhs->lhs_type->tt_class;
-	type_T	*type = class_member_type(cl, TRUE, dot + 1,
+	type_T	*type = oc_member_type(cl, TRUE, dot + 1,
 					  lhs->lhs_end, &lhs->lhs_member_idx);
 	if (lhs->lhs_member_idx < 0)
 	    return FAIL;
@@ -2245,12 +2295,31 @@ compile_load_lhs_with_index(lhs_T *lhs, char_u *var_start, cctx_T *cctx)
 		return FAIL;
 	}
 	if (cl->class_flags & CLASS_INTERFACE)
-	    return generate_GET_ITF_MEMBER(cctx, cl, lhs->lhs_member_idx, type,
-									FALSE);
-	return generate_GET_OBJ_MEMBER(cctx, lhs->lhs_member_idx, type, FALSE);
+	    return generate_GET_ITF_MEMBER(cctx, cl, lhs->lhs_member_idx, type);
+	return generate_GET_OBJ_MEMBER(cctx, lhs->lhs_member_idx, type);
+    }
+    else if (lhs->lhs_type->tt_type == VAR_CLASS)
+    {
+	// "<classname>.value": load class variable "classname.value"
+	char_u *dot = vim_strchr(var_start, '.');
+	if (dot == NULL)
+	{
+	    check_type_is_value(lhs->lhs_type);
+	    return FAIL;
+	}
+
+	class_T	*cl = lhs->lhs_type->tt_class;
+	ocmember_T *m = class_member_lookup(cl, dot + 1,
+						lhs->lhs_end - dot - 1,
+						&lhs->lhs_member_idx);
+	if (m == NULL)
+	    return FAIL;
+
+	return generate_CLASSMEMBER(cctx, TRUE, cl, lhs->lhs_member_idx);
     }
 
-    compile_load_lhs(lhs, var_start, NULL, cctx);
+    if (compile_load_lhs(lhs, var_start, NULL, cctx) == FAIL)
+	return FAIL;
 
     if (lhs->lhs_has_index)
     {
@@ -2459,6 +2528,7 @@ push_default_value(
 	case VAR_VOID:
 	case VAR_INSTR:
 	case VAR_CLASS:
+	case VAR_TYPEALIAS:
 	case VAR_SPECIAL:  // cannot happen
 	    // This is skipped for local variables, they are always
 	    // initialized to zero.  But in a "for" or "while" loop
@@ -2570,7 +2640,7 @@ compile_assignment(
 	list_T	   *l;
 
 	// [let] varname =<< [trim] {end}
-	eap->getline = exarg_getline;
+	eap->ea_getline = exarg_getline;
 	eap->cookie = cctx;
 	l = heredoc_get(eap, op + 3, FALSE, TRUE);
 	if (l == NULL)
@@ -2749,6 +2819,8 @@ compile_assignment(
 
 		rhs_type = cctx->ctx_type_stack.ga_len == 0 ? &t_void
 						  : get_type_on_stack(cctx, 0);
+		if (check_type_is_value(rhs_type) == FAIL)
+		    goto theend;
 		if (lhs.lhs_lvar != NULL && (is_decl || !lhs.lhs_has_type))
 		{
 		    if ((rhs_type->tt_type == VAR_FUNC
@@ -3087,7 +3159,7 @@ get_cmd_count(char_u *line, exarg_T *eap)
     // skip over colons and white space
     for (p = line; *p == ':' || VIM_ISWHITE(*p); ++p)
 	;
-    if (!isdigit(*p))
+    if (!SAFE_isdigit(*p))
     {
 	// The command or modifiers must be following.  Assume a lower case
 	// character means there is a modifier.
@@ -3305,7 +3377,15 @@ compile_def_function(
 		    }
 
 		    type_T	*type = get_type_on_stack(&cctx, 0);
-		    if (m->ocm_type->tt_type != type->tt_type)
+		    if (m->ocm_type->tt_type == VAR_ANY
+			    && !(m->ocm_flags & OCMFLAG_HAS_TYPE)
+			    && type->tt_type != VAR_SPECIAL)
+		    {
+			// If the member variable type is not yet set, then use
+			// the initialization expression type.
+			m->ocm_type = type;
+		    }
+		    else if (m->ocm_type->tt_type != type->tt_type)
 		    {
 			// The type of the member initialization expression is
 			// determined at run time.  Add a runtime type check.
@@ -3902,6 +3982,11 @@ compile_def_function(
 			goto erret;
 		    }
 		    line = (char_u *)"";
+		    break;
+
+	    case CMD_type:
+		    emsg(_(e_type_can_only_be_used_in_script));
+		    goto erret;
 		    break;
 
 	    case CMD_global:

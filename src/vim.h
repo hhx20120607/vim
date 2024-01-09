@@ -173,8 +173,8 @@
 #  define FEAT_CLIPBOARD
 # endif
 # if defined(FEAT_HUGE) && !defined(FEAT_SOUND) && \
-   defined(MAC_OS_X_VERSION_MIN_REQUIRED) && \
-    MAC_OS_X_VERSION_MIN_REQUIRED >= 101100
+	defined(__clang_major__) && __clang_major__ >= 7 && \
+	defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
 #  define FEAT_SOUND
 # endif
 # if defined(FEAT_SOUND)
@@ -435,6 +435,17 @@ typedef unsigned short sattr_T;
  */
 typedef unsigned int u8char_T;	// int is 32 bits or more
 
+/*
+ * The vimlong_T has sizeof(vimlong_T) >= 2 * sizeof(int).
+ * One use is simple handling of overflow in int calculations.
+ */
+#if defined(VMS) && defined(VAX)
+// unsupported compiler
+typedef long      vimlong_T;
+#else
+typedef long long vimlong_T;
+#endif
+
 #ifndef UNIX		    // For Unix this is included in os_unix.h
 # include <stdio.h>
 # include <ctype.h>
@@ -493,6 +504,10 @@ typedef unsigned int u8char_T;	// int is 32 bits or more
 # include <wctype.h>
 #endif
 #include <stdarg.h>
+// older compilers do not define va_copy
+#ifndef va_copy
+# define va_copy(dst, src)	((dst) = (src))
+#endif
 
 // for offsetof()
 #include <stddef.h>
@@ -822,6 +837,11 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define EXPAND_BREAKPOINT	51
 #define EXPAND_SCRIPTNAMES	52
 #define EXPAND_RUNTIME		53
+#define EXPAND_STRING_SETTING	54
+#define EXPAND_SETTING_SUBTRACT	55
+#define EXPAND_ARGOPT		56
+#define EXPAND_TERMINALOPT	57
+#define EXPAND_KEYMAP		58
 
 // Values for exmode_active (0 is no exmode)
 #define EXMODE_NORMAL		1
@@ -2138,7 +2158,8 @@ typedef int sock_T;
 #define VV_SIZEOFPOINTER 104
 #define VV_MAXCOL	105
 #define VV_PYTHON3_VERSION 106
-#define VV_LEN		107	// number of v: vars
+#define VV_TYPE_TYPEALIAS 107
+#define VV_LEN		108	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
@@ -2161,6 +2182,7 @@ typedef int sock_T;
 #define VAR_TYPE_INSTR	    11
 #define VAR_TYPE_CLASS	    12
 #define VAR_TYPE_OBJECT	    13
+#define VAR_TYPE_TYPEALIAS  14
 
 #define DICT_MAXNEST 100	// maximum nesting of lists and dicts
 
@@ -2329,6 +2351,20 @@ typedef enum {
  * Otherwise returns an error message.
  */
 typedef char *(*opt_did_set_cb_T)(optset_T *args);
+
+/*
+ * Type for the callback function that is invoked when expanding possible
+ * string option values during cmdline completion.
+ *
+ * Strings in returned matches will be managed and freed by caller.
+ *
+ * Returns OK if the expansion succeeded (numMatches and matches have to be
+ * set). Otherwise returns FAIL.
+ *
+ * Note: If returned FAIL or *numMatches is 0, *matches will NOT be freed by
+ * caller.
+ */
+typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***matches);
 
 // Flags for assignment functions.
 #define ASSIGN_VAR	0     // ":var" (nothing special)
@@ -2760,6 +2796,7 @@ typedef char *(*opt_did_set_cb_T)(optset_T *args);
 #define GLV_COMPILING	TFN_COMPILING	// variable may be defined later
 #define GLV_ASSIGN_WITH_OP TFN_ASSIGN_WITH_OP // assignment with operator
 #define GLV_PREFER_FUNC	0x10000		// prefer function above variable
+#define GLV_FOR_LOOP	0x20000		// assigning to a loop variable
 
 #define DO_NOT_FREE_CNT 99999	// refcount for dict or list that should not
 				// be freed.

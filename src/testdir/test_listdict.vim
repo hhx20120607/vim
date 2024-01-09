@@ -435,13 +435,13 @@ func Test_dict_assign()
     let n = 0
     let n.key = 3
   END
-  call v9.CheckScriptFailure(lines, 'E1203: Dot can only be used on a dictionary: n.key = 3')
+  call v9.CheckScriptFailure(lines, 'E1203: Dot not allowed after a number: n.key = 3')
   let lines =<< trim END
     vim9script
     var n = 0
     n.key = 3
   END
-  call v9.CheckScriptFailure(lines, 'E1203: Dot can only be used on a dictionary: n.key = 3')
+  call v9.CheckScriptFailure(lines, 'E1203: Dot not allowed after a number: n.key = 3')
   let lines =<< trim END
     var n = 0
     n.key = 3
@@ -516,7 +516,7 @@ func Test_dict_func_remove()
       var d = {1: 'a', 3: 'c'}
       call remove(d, [])
   END
-  call v9.CheckDefExecFailure(lines, 'E1013: Argument 2: type mismatch, expected string but got list<unknown>')
+  call v9.CheckDefExecFailure(lines, 'E1013: Argument 2: type mismatch, expected string but got list<any>')
 endfunc
 
 " Nasty: remove func from Dict that's being called (works)

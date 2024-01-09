@@ -229,9 +229,9 @@ shift_line(
     int	amount,
     int call_changed_bytes)	// call changed_bytes()
 {
-    int		count;
+    vimlong_T	count;
     int		i, j;
-    int		sw_val = (int)get_sw_value_indent(curbuf);
+    int		sw_val = trim_to_int(get_sw_value_indent(curbuf));
 
     count = get_indent();	// get current indent
 
@@ -249,25 +249,25 @@ shift_line(
 	}
 	else
 	    i += amount;
-	count = i * sw_val;
+	count = (vimlong_T)i * (vimlong_T)sw_val;
     }
     else		// original vi indent
     {
 	if (left)
 	{
-	    count -= sw_val * amount;
+	    count -= (vimlong_T)sw_val * (vimlong_T)amount;
 	    if (count < 0)
 		count = 0;
 	}
 	else
-	    count += sw_val * amount;
+	    count += (vimlong_T)sw_val * (vimlong_T)amount;
     }
 
     // Set new indent
     if (State & VREPLACE_FLAG)
-	change_indent(INDENT_SET, count, FALSE, NUL, call_changed_bytes);
+	change_indent(INDENT_SET, trim_to_int(count), FALSE, NUL, call_changed_bytes);
     else
-	(void)set_indent(count, call_changed_bytes ? SIN_CHANGED : 0);
+	(void)set_indent(trim_to_int(count), call_changed_bytes ? SIN_CHANGED : 0);
 }
 
 /*
@@ -2734,7 +2734,7 @@ do_addsub(
 	{
 	    if (CharOrd(firstdigit) < Prenum1)
 	    {
-		if (isupper(firstdigit))
+		if (SAFE_isupper(firstdigit))
 		    firstdigit = 'A';
 		else
 		    firstdigit = 'a';
@@ -2746,7 +2746,7 @@ do_addsub(
 	{
 	    if (26 - CharOrd(firstdigit) - 1 < Prenum1)
 	    {
-		if (isupper(firstdigit))
+		if (SAFE_isupper(firstdigit))
 		    firstdigit = 'Z';
 		else
 		    firstdigit = 'z';
@@ -2875,9 +2875,9 @@ do_addsub(
 	save_pos = curwin->w_cursor;
 	for (i = 0; i < todel; ++i)
 	{
-	    if (c < 0x100 && isalpha(c))
+	    if (c < 0x100 && SAFE_isalpha(c))
 	    {
-		if (isupper(c))
+		if (SAFE_isupper(c))
 		    hexupper = TRUE;
 		else
 		    hexupper = FALSE;
@@ -4134,6 +4134,9 @@ do_pending_operator(cmdarg_T *cap, int old_col, int gui_yank)
 		// before.
 		restore_lbr(lbr_saved);
 #endif
+		// trigger TextChangedI
+		curbuf->b_last_changedtick_i = CHANGEDTICK(curbuf);
+
 		if (op_change(oap))	// will call edit()
 		    cap->retval |= CA_COMMAND_BUSY;
 		if (restart_edit == 0)
@@ -4244,6 +4247,9 @@ do_pending_operator(cmdarg_T *cap, int old_col, int gui_yank)
 		// before.
 		restore_lbr(lbr_saved);
 #endif
+		// trigger TextChangedI
+		curbuf->b_last_changedtick_i = CHANGEDTICK(curbuf);
+
 		op_insert(oap, cap->count1);
 #ifdef FEAT_LINEBREAK
 		// Reset linebreak, so that formatting works correctly.

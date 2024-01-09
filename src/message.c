@@ -353,7 +353,7 @@ trunc_string(
     else
     {
 	// can't fit in the "...", just truncate it
-	buf[e - 1] = NUL;
+	buf[buflen - 1] = NUL;
     }
 }
 
@@ -1445,6 +1445,9 @@ set_keep_msg_from_hist(void)
 msg_start(void)
 {
     int		did_return = FALSE;
+
+    if (msg_row < cmdline_row)
+	msg_row = cmdline_row;
 
     if (!msg_silent)
     {

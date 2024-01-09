@@ -77,7 +77,7 @@ one_function_arg(
 
     while (ASCII_ISALNUM(*p) || *p == '_')
 	++p;
-    if (arg == p || isdigit(*arg)
+    if (arg == p || SAFE_isdigit(*arg)
 	    || (argtypes == NULL
 		&& ((p - arg == 9 && STRNCMP(arg, "firstline", 9) == 0)
 		    || (p - arg == 8 && STRNCMP(arg, "lastline", 8) == 0))))
@@ -195,10 +195,10 @@ get_function_line(
 {
     char_u *theline;
 
-    if (eap->getline == NULL)
+    if (eap->ea_getline == NULL)
 	theline = getcmdline(':', 0L, indent, 0);
     else
-	theline = eap->getline(':', eap->cookie, indent, getline_options);
+	theline = eap->ea_getline(':', eap->cookie, indent, getline_options);
     if (theline != NULL)
     {
 	if (lines_to_free->ga_len > 0
@@ -240,6 +240,7 @@ get_function_args(
     int		c;
     int		any_default = FALSE;
     char_u	*whitep = *argp;
+    int		need_expr = FALSE;
 
     if (newargs != NULL)
 	ga_init2(newargs, sizeof(char_u *), 3);
@@ -260,7 +261,7 @@ get_function_args(
     p = arg;
     while (*p != endchar)
     {
-	while (eap != NULL && eap->getline != NULL
+	while (eap != NULL && eap->ea_getline != NULL
 			 && (*p == NUL || (VIM_ISWHITE(*whitep) && *p == '#')))
 	{
 	    // End of the line, get the next one.
@@ -279,7 +280,7 @@ get_function_args(
 		semsg(_(e_invalid_argument_str), *argp);
 	    goto err_ret;
 	}
-	if (*p == endchar)
+	if (*p == endchar && !need_expr)
 	    break;
 
 	if (p[0] == '.' && p[1] == '.' && p[2] == '.')
@@ -319,6 +320,16 @@ get_function_args(
 	    while (ASCII_ISALNUM(*p) || *p == '_')
 		++p;
 	    char_u *argend = p;
+
+	    // object variable this. can be used only in a constructor
+	    if (STRNCMP(eap->arg, "new", 3) != 0)
+	    {
+		c = *argend;
+		*argend = NUL;
+		semsg(_(e_cannot_use_an_object_variable_except_with_the_new_method_str), arg);
+		*argend = c;
+		break;
+	    }
 
 	    if (*skipwhite(p) == '=')
 	    {
@@ -422,6 +433,8 @@ get_function_args(
 			if (ga_grow(default_args, 1) == FAIL)
 			    goto err_ret;
 
+			if (need_expr)
+			    need_expr = FALSE;
 			// trim trailing whitespace
 			while (p > expr && VIM_ISWHITE(p[-1]))
 			    p--;
@@ -440,7 +453,11 @@ get_function_args(
 		    }
 		}
 		else
+		{
 		    mustend = TRUE;
+		    if (*skipwhite(p) == NUL)
+			need_expr = TRUE;
+		}
 	    }
 	    else if (any_default)
 	    {
@@ -869,7 +886,7 @@ get_function_body(
 
     // Detect having skipped over comment lines to find the return
     // type.  Add NULL lines to keep the line count correct.
-    sourcing_lnum_off = get_sourced_lnum(eap->getline, eap->cookie);
+    sourcing_lnum_off = get_sourced_lnum(eap->ea_getline, eap->cookie);
     if (SOURCING_LNUM < sourcing_lnum_off)
     {
 	sourcing_lnum_off -= SOURCING_LNUM;
@@ -932,7 +949,7 @@ get_function_body(
 	}
 
 	// Detect line continuation: SOURCING_LNUM increased more than one.
-	sourcing_lnum_off = get_sourced_lnum(eap->getline, eap->cookie);
+	sourcing_lnum_off = get_sourced_lnum(eap->ea_getline, eap->cookie);
 	if (SOURCING_LNUM < sourcing_lnum_off)
 	    sourcing_lnum_off -= SOURCING_LNUM;
 	else
@@ -1329,7 +1346,7 @@ lambda_function_body(
 	fill_exarg_from_cctx(&eap, evalarg->eval_cctx);
     else
     {
-	eap.getline = evalarg->eval_getline;
+	eap.ea_getline = evalarg->eval_getline;
 	eap.cookie = evalarg->eval_cookie;
     }
 
@@ -1885,7 +1902,8 @@ get_func_arguments(
 	evalarg_T   *evalarg,
 	int	    partial_argc,
 	typval_T    *argvars,
-	int	    *argcount)
+	int	    *argcount,
+	int	    is_builtin)
 {
     char_u	*argp = *arg;
     int		ret = OK;
@@ -1900,12 +1918,20 @@ get_func_arguments(
 
 	if (*argp == ')' || *argp == ',' || *argp == NUL)
 	    break;
-	if (eval1(&argp, &argvars[*argcount], evalarg) == FAIL)
+
+	int arg_idx = *argcount;
+	if (eval1(&argp, &argvars[arg_idx], evalarg) == FAIL)
 	{
 	    ret = FAIL;
 	    break;
 	}
 	++*argcount;
+	if (!is_builtin && check_typval_is_value(&argvars[arg_idx]) == FAIL)
+	{
+	    ret = FAIL;
+	    break;
+	}
+
 	// The comma should come right after the argument, but this wasn't
 	// checked previously, thus only enforce it in Vim9 script.
 	if (vim9script)
@@ -1965,7 +1991,7 @@ get_func_tv(
     argp = *arg;
     ret = get_func_arguments(&argp, evalarg,
 	    (funcexe->fe_partial == NULL ? 0 : funcexe->fe_partial->pt_argc),
-							   argvars, &argcount);
+			       argvars, &argcount, builtin_function(name, -1));
 
     if (ret == OK)
     {
@@ -2246,7 +2272,7 @@ func_requires_g_prefix(ufunc_T *ufunc)
     return ufunc->uf_name[0] != K_SPECIAL
 	    && (ufunc->uf_flags & FC_LAMBDA) == 0
 	    && vim_strchr(ufunc->uf_name, AUTOLOAD_CHAR) == NULL
-	    && !isdigit(ufunc->uf_name[0]);
+	    && !SAFE_isdigit(ufunc->uf_name[0]);
 }
 
 /*
@@ -2422,8 +2448,8 @@ cleanup_function_call(funccall_T *fc)
     static int
 numbered_function(char_u *name)
 {
-    return isdigit(*name)
-	    || (name[0] == 'g' && name[1] == ':' && isdigit(name[2]));
+    return SAFE_isdigit(*name)
+	    || (name[0] == 'g' && name[1] == ':' && SAFE_isdigit(name[2]));
 }
 
 /*
@@ -2513,7 +2539,7 @@ func_clear_items(ufunc_T *fp)
     VIM_CLEAR(fp->uf_arg_types);
     VIM_CLEAR(fp->uf_block_ids);
     VIM_CLEAR(fp->uf_va_name);
-    clear_type_list(&fp->uf_type_list);
+    clear_func_type_list(&fp->uf_type_list, &fp->uf_func_type);
 
     // Increment the refcount of this function to avoid it being freed
     // recursively when the partial is freed.
@@ -3530,6 +3556,12 @@ func_call(
 	funcexe.fe_lastline = curwin->w_cursor.lnum;
 	funcexe.fe_evaluate = TRUE;
 	funcexe.fe_partial = partial;
+	if (partial != NULL)
+	{
+	    funcexe.fe_object = partial->pt_obj;
+	    if (funcexe.fe_object != NULL)
+		++funcexe.fe_object->obj_refcount;
+	}
 	funcexe.fe_selfdict = selfdict;
 	r = call_func(name, -1, rettv, argc, argv, &funcexe);
     }
@@ -3567,9 +3599,22 @@ call_callback(
 
     if (callback->cb_name == NULL || *callback->cb_name == NUL)
 	return FAIL;
+
+    if (callback_depth > p_mfd)
+    {
+	emsg(_(e_command_too_recursive));
+	return FAIL;
+    }
+
     CLEAR_FIELD(funcexe);
     funcexe.fe_evaluate = TRUE;
     funcexe.fe_partial = callback->cb_partial;
+    if (callback->cb_partial != NULL)
+    {
+	funcexe.fe_object = callback->cb_partial->pt_obj;
+	if (funcexe.fe_object != NULL)
+	    ++funcexe.fe_object->obj_refcount;
+    }
     ++callback_depth;
     ret = call_func(callback->cb_name, len, rettv, argcount, argvars, &funcexe);
     --callback_depth;
@@ -4608,7 +4653,7 @@ list_functions(regmatch_T *regmatch)
 		    && (regmatch == NULL
 			? !message_filtered(fp->uf_name)
 			    && !func_name_refcount(fp->uf_name)
-			: !isdigit(*fp->uf_name)
+			: !SAFE_isdigit(*fp->uf_name)
 			    && vim_regexec(regmatch, fp->uf_name, 0)))
 	    {
 		if (list_func_head(fp, FALSE) == FAIL)
@@ -5396,7 +5441,7 @@ errret_2:
     {
 	VIM_CLEAR(fp->uf_arg_types);
 	VIM_CLEAR(fp->uf_va_name);
-	clear_type_list(&fp->uf_type_list);
+	clear_func_type_list(&fp->uf_type_list, &fp->uf_func_type);
     }
     if (free_fp)
 	VIM_CLEAR(fp);
@@ -6086,8 +6131,9 @@ ex_defer_inner(
 		copy_tv(&partial->pt_argv[i], &argvars[i]);
 	}
     }
+    int is_builtin = builtin_function(name, -1);
     r = get_func_arguments(arg, evalarg, FALSE,
-					    argvars + partial_argc, &argcount);
+				argvars + partial_argc, &argcount, is_builtin);
     argcount += partial_argc;
 
     if (r == OK)
@@ -6097,7 +6143,7 @@ ex_defer_inner(
 	    // Check that the arguments are OK for the types of the funcref.
 	    r = check_argument_types(type, argvars, argcount, NULL, name);
 	}
-	else if (builtin_function(name, -1))
+	else if (is_builtin)
 	{
 	    int idx = find_internal_func(name);
 
@@ -6222,7 +6268,17 @@ handle_defer_one(funccall_T *funccal)
 	char_u *name = dr->dr_name;
 	dr->dr_name = NULL;
 
+	// If the deferred function is called after an exception, then only the
+	// first statement in the function will be executed (because of the
+	// exception).  So save and restore the try/catch/throw exception
+	// state.
+	exception_state_T estate;
+	exception_state_save(&estate);
+	exception_state_clear();
+
 	call_func(name, -1, &rettv, dr->dr_argcount, dr->dr_argvars, &funcexe);
+
+	exception_state_restore(&estate);
 
 	clear_tv(&rettv);
 	vim_free(name);

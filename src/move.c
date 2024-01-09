@@ -45,8 +45,9 @@ adjust_plines_for_skipcol(win_T *wp)
 	return 0;
 
     int width = wp->w_width - win_col_off(wp);
-    if (wp->w_skipcol >= width)
-	return (wp->w_skipcol - width) / (width + win_col_off2(wp)) + 1;
+    int w2 = width + win_col_off2(wp);
+    if (wp->w_skipcol >= width && w2 > 0)
+	return (wp->w_skipcol - width) / w2 + 1;
 
     return 0;
 }
@@ -1530,6 +1531,8 @@ f_screenpos(typval_T *argvars UNUSED, typval_T *rettv)
 	return;
     }
     pos.col = tv_get_number(&argvars[2]) - 1;
+    if (pos.col < 0)
+	pos.col = 0;
     pos.coladd = 0;
     textpos2screenpos(wp, &pos, &row, &scol, &ccol, &ecol);
 
@@ -1547,14 +1550,17 @@ f_screenpos(typval_T *argvars UNUSED, typval_T *rettv)
     static int
 virtcol2col(win_T *wp, linenr_T lnum, int vcol)
 {
-    int		offset = vcol2col(wp, lnum, vcol);
+    int		offset = vcol2col(wp, lnum, vcol - 1, NULL);
     char_u	*line = ml_get_buf(wp->w_buffer, lnum, FALSE);
     char_u	*p = line + offset;
 
-    // For a multibyte character, need to return the column number of the first
-    // byte.
-    MB_PTR_BACK(line, p);
-
+    if (*p == NUL)
+    {
+	if (p == line)  // empty line
+	    return 0;
+	// Move to the first byte of the last char.
+	MB_PTR_BACK(line, p);
+    }
     return (int)(p - line + 1);
 }
 
@@ -1755,6 +1761,8 @@ scrolldown(
 	if (col > width2 && width2 > 0)
 	{
 	    row += col / width2;
+	    // even so col is not used anymore,
+	    // make sure it is correct, just in case
 	    col = col % width2;
 	}
 	if (row >= curwin->w_height)
@@ -1991,6 +1999,8 @@ adjust_skipcol(void)
     if (col > width2)
     {
 	row += col / width2;
+	// col may no longer be used, but make
+	// sure it is correct anyhow, just in case
 	col = col % width2;
     }
     if (row >= curwin->w_height)
@@ -2416,7 +2426,9 @@ scroll_cursor_top(int min_scroll, int always)
 	}
 	check_topfill(curwin, FALSE);
 #endif
-	if (curwin->w_topline == curwin->w_cursor.lnum)
+	if (curwin->w_topline != old_topline)
+	    reset_skipcol();
+	else if (curwin->w_topline == curwin->w_cursor.lnum)
 	{
 	    validate_virtcol();
 	    if (curwin->w_skipcol >= curwin->w_virtcol)
@@ -3262,6 +3274,7 @@ onepage(int dir, long count)
 #ifdef FEAT_DIFF
 			curwin->w_topfill = 0;
 #endif
+			curwin->w_valid &= ~(VALID_WROW|VALID_CROW);
 		    }
 		    comp_botline(curwin);
 		    curwin->w_cursor.lnum = curwin->w_botline - 1;
@@ -3570,6 +3583,14 @@ halfpage(int flag, linenr_T Prenum)
     void
 do_check_cursorbind(void)
 {
+    static win_T	*prev_curwin = NULL;
+    static pos_T	prev_cursor = {0, 0, 0};
+
+    if (curwin == prev_curwin && EQUAL_POS(curwin->w_cursor, prev_cursor))
+	return;
+    prev_curwin = curwin;
+    prev_cursor = curwin->w_cursor;
+
     linenr_T	line = curwin->w_cursor.lnum;
     colnr_T	col = curwin->w_cursor.col;
     colnr_T	coladd = curwin->w_cursor.coladd;
@@ -3587,7 +3608,7 @@ do_check_cursorbind(void)
     FOR_ALL_WINDOWS(curwin)
     {
 	curbuf = curwin->w_buffer;
-	// skip original window  and windows with 'noscrollbind'
+	// skip original window and windows with 'nocursorbind'
 	if (curwin != old_curwin && curwin->w_p_crb)
 	{
 # ifdef FEAT_DIFF

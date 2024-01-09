@@ -171,6 +171,11 @@ typedef struct {
 #ifdef FEAT_SIGNS
     sign_attrs_T sattr;
 #endif
+#ifdef FEAT_LINEBREAK
+     // do consider wrapping in linebreak mode only after encountering
+     // a non whitespace char
+    int		need_lbr;
+#endif
 } winlinevars_T;
 
 // draw_state values for items that are drawn in sequence:
@@ -493,10 +498,11 @@ handle_breakindent(win_T *wp, winlinevars_T *wlv)
     {
 	wlv->draw_state = WL_BRI;
 	// if wlv->need_showbreak is set, breakindent also applies
-	if (wp->w_p_bri && (wlv->row != wlv->startrow || wlv->need_showbreak)
+	if (wp->w_p_bri && (wlv->row > wlv->startrow
 # ifdef FEAT_DIFF
-		&& wlv->filler_lines == 0
+		    + wlv->filler_lines
 # endif
+		    || wlv->need_showbreak)
 # ifdef FEAT_PROP_POPUP
 		&& !wlv->dont_use_showbreak
 # endif
@@ -518,14 +524,21 @@ handle_breakindent(win_T *wp, winlinevars_T *wlv)
 		if (wlv->n_extra < 0)
 		    wlv->n_extra = 0;
 	    }
-	    if (wp->w_skipcol > 0 && wlv->startrow == 0
-					   && wp->w_p_wrap && wp->w_briopt_sbr)
-		wlv->need_showbreak = FALSE;
+
+	    // Correct start of highlighted area for 'breakindent',
+	    if (wlv->fromcol >= wlv->vcol
+				    && wlv->fromcol < wlv->vcol + wlv->n_extra)
+		wlv->fromcol = wlv->vcol + wlv->n_extra;
+
 	    // Correct end of highlighted area for 'breakindent',
 	    // required when 'linebreak' is also set.
 	    if (wlv->tocol == wlv->vcol)
 		wlv->tocol += wlv->n_extra;
 	}
+
+	if (wp->w_skipcol > 0 && wlv->startrow == 0 && wp->w_p_wrap
+							   && wp->w_briopt_sbr)
+	    wlv->need_showbreak = FALSE;
     }
 }
 #endif
@@ -567,8 +580,6 @@ handle_showbreak_and_filler(win_T *wp, winlinevars_T *wlv)
 	wlv->c_extra = NUL;
 	wlv->c_final = NUL;
 	wlv->n_extra = (int)STRLEN(sbr);
-	if (wp->w_skipcol == 0 || wlv->startrow != 0 || !wp->w_p_wrap)
-	    wlv->need_showbreak = FALSE;
 	wlv->vcol_sbr = wlv->vcol + MB_CHARLEN(sbr);
 
 	// Correct start of highlighted area for 'showbreak'.
@@ -587,6 +598,10 @@ handle_showbreak_and_filler(win_T *wp, winlinevars_T *wlv)
 	    wlv->char_attr = hl_combine_attr(wlv->char_attr, wlv->cul_attr);
 #  endif
     }
+
+    if (wp->w_skipcol == 0 || wlv->startrow > 0 || !wp->w_p_wrap
+							  || !wp->w_briopt_sbr)
+	wlv->need_showbreak = FALSE;
 # endif
 }
 #endif
@@ -968,6 +983,9 @@ win_line_start(win_T *wp UNUSED, winlinevars_T *wlv, int save_extra)
 {
     wlv->col = 0;
     wlv->off = (unsigned)(current_ScreenLine - ScreenLines);
+#ifdef FEAT_LINEBREAK
+    wlv->need_lbr = FALSE;
+#endif
 
 #ifdef FEAT_RIGHTLEFT
     if (wp->w_p_rl)
@@ -994,6 +1012,9 @@ win_line_start(win_T *wp UNUSED, winlinevars_T *wlv, int save_extra)
 	wlv->saved_extra_for_textprop = wlv->extra_for_textprop;
 	wlv->saved_c_extra = wlv->c_extra;
 	wlv->saved_c_final = wlv->c_final;
+#ifdef FEAT_LINEBREAK
+	wlv->need_lbr = TRUE;
+#endif
 #ifdef FEAT_SYN_HL
 	if (!(wlv->cul_screenline
 # ifdef FEAT_DIFF
@@ -1138,6 +1159,7 @@ win_line(
 #ifdef FEAT_PROP_POPUP
     int		did_line = FALSE;	// set to TRUE when line text done
     int		text_prop_count;
+    int		last_textprop_text_idx = -1;
     int		text_prop_next = 0;	// next text property to use
     textprop_T	*text_props = NULL;
     int		*text_prop_idxs = NULL;
@@ -1604,6 +1626,11 @@ win_line(
 	{
 	    area_highlighting = TRUE;
 	    extra_check = TRUE;
+
+	    /* Find the last text property that inserts text. */
+	    for (int i = 0; i < text_prop_count; ++i)
+		if (text_props[i].tp_id < 0)
+		    last_textprop_text_idx = i;
 
 	    // When skipping virtual text the props need to be sorted.  The
 	    // order is reversed!
@@ -2905,8 +2932,19 @@ win_line(
 		}
 #endif
 #ifdef FEAT_LINEBREAK
+		// we don't want linebreak to apply for lines that start with
+		// leading spaces, followed by long letters (since it would add
+		// a break at the beginning of a line and this might be unexpected)
+		//
+		// So only allow to linebreak, once we have found chars not in
+		// 'breakat' in the line.
+		if ( wp->w_p_lbr && !wlv.need_lbr && c != NUL &&
+			!VIM_ISBREAK((int)*ptr))
+		    wlv.need_lbr = TRUE;
+#endif
+#ifdef FEAT_LINEBREAK
 		// Found last space before word: check for line break.
-		if (wp->w_p_lbr && c0 == c
+		if (wp->w_p_lbr && c0 == c && wlv.need_lbr
 				  && VIM_ISBREAK(c) && !VIM_ISBREAK((int)*ptr))
 		{
 		    int	    mb_off = has_mbyte ? (*mb_head_off)(line, ptr - 1)
@@ -3769,7 +3807,7 @@ win_line(
 		    || (wlv.n_extra > 0 && (wlv.c_extra != NUL
 						     || *wlv.p_extra != NUL))
 #ifdef FEAT_PROP_POPUP
-		    || text_prop_next < text_prop_count
+		    || text_prop_next <= last_textprop_text_idx
 #endif
 		   ))
 	{
@@ -4061,7 +4099,7 @@ win_line(
 #endif
 #ifdef FEAT_PROP_POPUP
 		    || text_prop_above || text_prop_follows
-		    || text_prop_next < text_prop_count
+		    || text_prop_next <= last_textprop_text_idx
 #endif
 		    || (wp->w_p_list && wp->w_lcs_chars.eol != NUL
 						&& wlv.p_extra != at_end_str)

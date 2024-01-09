@@ -92,6 +92,10 @@ free_tv(typval_T *varp)
 	    object_unref(varp->vval.v_object);
 	    break;
 
+	case VAR_TYPEALIAS:
+	    typealias_unref(varp->vval.v_typealias);
+	    break;
+
 	case VAR_NUMBER:
 	case VAR_FLOAT:
 	case VAR_ANY:
@@ -168,6 +172,10 @@ clear_tv(typval_T *varp)
 	case VAR_OBJECT:
 	    object_unref(varp->vval.v_object);
 	    varp->vval.v_object = NULL;
+	    break;
+	case VAR_TYPEALIAS:
+	    typealias_unref(varp->vval.v_typealias);
+	    varp->vval.v_typealias = NULL;
 	    break;
 	case VAR_UNKNOWN:
 	case VAR_ANY:
@@ -254,7 +262,8 @@ tv_get_bool_or_number_chk(
 	    emsg(_(e_using_blob_as_number));
 	    break;
 	case VAR_CLASS:
-	    emsg(_(e_using_class_as_number));
+	case VAR_TYPEALIAS:
+	    check_typval_is_value(varp);
 	    break;
 	case VAR_OBJECT:
 	    emsg(_(e_using_object_as_number));
@@ -371,7 +380,8 @@ tv_get_float_chk(typval_T *varp, int *error)
 	    emsg(_(e_using_blob_as_float));
 	    break;
 	case VAR_CLASS:
-	    emsg(_(e_using_class_as_float));
+	case VAR_TYPEALIAS:
+	    check_typval_is_value(varp);
 	    break;
 	case VAR_OBJECT:
 	    emsg(_(e_using_object_as_float));
@@ -988,15 +998,29 @@ check_for_object_arg(typval_T *args, int idx)
 }
 
 /*
- * Give an error and return FAIL unless "args[idx]" is a class or a list.
+ * Returns TRUE if "tv" is a type alias for a class
  */
     int
-check_for_class_or_list_arg(typval_T *args, int idx)
+tv_class_alias(typval_T *tv)
 {
-    if (args[idx].v_type != VAR_CLASS && args[idx].v_type != VAR_LIST)
+    return tv->v_type == VAR_TYPEALIAS &&
+			tv->vval.v_typealias->ta_type->tt_type == VAR_OBJECT;
+}
+
+/*
+ * Give an error and return FAIL unless "args[idx]" is a class
+ * or class typealias.
+ */
+    int
+check_for_class_or_typealias_args(typval_T *args, int idx)
+{
+    for (int i = idx; args[i].v_type != VAR_UNKNOWN; ++i)
     {
-	semsg(_(e_list_or_class_required_for_argument_nr), idx + 1);
-	return FAIL;
+	if (args[i].v_type != VAR_CLASS && !tv_class_alias(&args[idx]))
+	{
+	    semsg(_(e_class_or_typealias_required_for_argument_nr), i + 1);
+	    return FAIL;
+	}
     }
     return OK;
 }
@@ -1101,7 +1125,8 @@ tv_get_string_buf_chk_strict(typval_T *varp, char_u *buf, int strict)
 	    emsg(_(e_using_blob_as_string));
 	    break;
 	case VAR_CLASS:
-	    emsg(_(e_using_class_as_string));
+	case VAR_TYPEALIAS:
+	    check_typval_is_value(varp);
 	    break;
 	case VAR_OBJECT:
 	    emsg(_(e_using_object_as_string));
@@ -1290,6 +1315,15 @@ copy_tv(typval_T *from, typval_T *to)
 		++to->vval.v_dict->dv_refcount;
 	    }
 	    break;
+	case VAR_TYPEALIAS:
+	    if (from->vval.v_typealias == NULL)
+		to->vval.v_typealias = NULL;
+	    else
+	    {
+		to->vval.v_typealias = from->vval.v_typealias;
+		++to->vval.v_typealias->ta_refcount;
+	    }
+	    break;
 	case VAR_VOID:
 	    emsg(_(e_cannot_use_void_value));
 	    break;
@@ -1315,7 +1349,13 @@ typval_compare(
     int		res = 0;
     int		type_is = type == EXPR_IS || type == EXPR_ISNOT;
 
-    if (type_is && tv1->v_type != tv2->v_type)
+    if (check_typval_is_value(tv1) == FAIL
+	|| check_typval_is_value(tv2) == FAIL)
+    {
+	clear_tv(tv1);
+	return FAIL;
+    }
+    else if (type_is && tv1->v_type != tv2->v_type)
     {
 	// For "is" a different type always means FALSE, for "isnot"
 	// it means TRUE.
@@ -1348,15 +1388,6 @@ typval_compare(
     else if (tv1->v_type == VAR_LIST || tv2->v_type == VAR_LIST)
     {
 	if (typval_compare_list(tv1, tv2, type, ic, &res) == FAIL)
-	{
-	    clear_tv(tv1);
-	    return FAIL;
-	}
-	n1 = res;
-    }
-    else if (tv1->v_type == VAR_CLASS || tv2->v_type == VAR_CLASS)
-    {
-	if (typval_compare_class(tv1, tv2, type, ic, &res) == FAIL)
 	{
 	    clear_tv(tv1);
 	    return FAIL;
@@ -1596,6 +1627,7 @@ typval_compare_null(typval_T *tv1, typval_T *tv2)
 	    case VAR_FLOAT: if (!in_vim9script())
 				 return tv->vval.v_float == 0.0;
 			     break;
+	    case VAR_TYPEALIAS: return tv->vval.v_typealias == NULL;
 	    default: break;
 	}
     }
@@ -2069,6 +2101,9 @@ tv_equal(
 	case VAR_FUNC:
 	    return tv1->vval.v_string == tv2->vval.v_string;
 
+	case VAR_TYPEALIAS:
+	    return tv1->vval.v_typealias == tv2->vval.v_typealias;
+
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_VOID:
@@ -2390,7 +2425,7 @@ eval_string(char_u **arg, typval_T *rettv, int evaluate, int interpolate)
 			  if (vim_isxdigit(p[1]))
 			  {
 			      int	n, nr;
-			      int	c = toupper(*p);
+			      int	c = SAFE_toupper(*p);
 
 			      if (c == 'X')
 				  n = 2;

@@ -105,7 +105,7 @@ struct typeobject_wrapper {
 # define Py_TYPE_GET_TP_METHODS(type) ((PyMethodDef *)PyType_GetSlot(type, Py_tp_methods))
 
 // PyObject_NEW is not part of stable ABI, but PyObject_Malloc/Init are.
-PyObject* Vim_PyObject_New(PyTypeObject *type, size_t objsize)
+static PyObject* Vim_PyObject_New(PyTypeObject *type, size_t objsize)
 {
     PyObject *obj = (PyObject *)PyObject_Malloc(objsize);
     if (obj == NULL)
@@ -168,7 +168,7 @@ PyObject* Vim_PyObject_New(PyTypeObject *type, size_t objsize)
 #  define PyIter_Check(obj) (FALSE)
 # endif
 
-PyTypeObject* AddHeapType(struct typeobject_wrapper* type_object)
+static PyTypeObject* AddHeapType(struct typeobject_wrapper* type_object)
 {
     PyType_Spec type_spec;
     type_spec.name = type_object->tp_name;
@@ -254,7 +254,7 @@ PyTypeObject* AddHeapType(struct typeobject_wrapper* type_object)
 
 // Limited API does not provide PyRun_* functions. Need to implement manually
 // using PyCompile and PyEval.
-PyObject* Vim_PyRun_String(const char *str, int start, PyObject *globals, PyObject *locals)
+static PyObject* Vim_PyRun_String(const char *str, int start, PyObject *globals, PyObject *locals)
 {
     // Just pass "" for filename for now.
     PyObject* compiled = Py_CompileString(str, "", start);
@@ -265,7 +265,7 @@ PyObject* Vim_PyRun_String(const char *str, int start, PyObject *globals, PyObje
     Py_DECREF(compiled);
     return eval_result;
 }
-int Vim_PyRun_SimpleString(const char *str)
+static int Vim_PyRun_SimpleString(const char *str)
 {
     // This function emulates CPython's implementation.
     PyObject* m = PyImport_AddModule("__main__");
@@ -3240,7 +3240,7 @@ FunctionNew(PyTypeObject *subtype, char_u *name, int argc, typval_T *argv,
     if (self == NULL)
 	return NULL;
 
-    if (isdigit(*name))
+    if (isdigit((unsigned char)*name))
     {
 	if (!translated_function_exists(name, FALSE))
 	{
@@ -6772,6 +6772,7 @@ ConvertToPyObject(typval_T *tv)
 	case VAR_INSTR:
 	case VAR_CLASS:
 	case VAR_OBJECT:
+	case VAR_TYPEALIAS:
 	    Py_INCREF(Py_None);
 	    return Py_None;
 	case VAR_BOOL:

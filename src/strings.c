@@ -1977,6 +1977,8 @@ f_trim(typval_T *argvars, typval_T *rettv)
     if (argvars[1].v_type == VAR_STRING)
     {
 	mask = tv_get_string_buf_chk(&argvars[1], buf2);
+	if (*mask == NUL)
+	    mask = NULL;
 
 	if (argvars[2].v_type != VAR_UNKNOWN)
 	{
@@ -2596,7 +2598,7 @@ parse_fmt_types(
 		    CHECK_POS_ARG;
 		}
 	    }
-	    else if (VIM_ISDIGIT((int)(*(arg = p))))
+	    else if (VIM_ISDIGIT((int)(*p)))
 	    {
 		// size_t could be wider than unsigned int; make sure we treat
 		// argument like common implementations do
@@ -2651,7 +2653,7 @@ parse_fmt_types(
 			CHECK_POS_ARG;
 		    }
 		}
-		else if (VIM_ISDIGIT((int)(*(arg = p))))
+		else if (VIM_ISDIGIT((int)(*p)))
 		{
 		    // size_t could be wider than unsigned int; make sure we
 		    // treat argument like common implementations do
@@ -2684,7 +2686,7 @@ parse_fmt_types(
 		if (length_modifier == 'l' && *p == 'l')
 		{
 		    // double l = __int64 / varnumber_T
-		    length_modifier = 'L';
+		    // length_modifier = 'L';
 		    p++;
 		}
 	    }
